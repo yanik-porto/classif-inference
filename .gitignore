@@ -1,0 +1,5 @@
+externals
+build
+*.pth
+*.pt
+.vscode
