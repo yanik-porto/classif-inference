@@ -1,5 +1,7 @@
+#ifndef MODEL_LOADER_H
+#define MODEL_LOADER_H
+
 #include <string>
-#include <torch/script.h>
 
 class ModelLoader {
 public:
@@ -13,5 +15,8 @@ public:
      */
     virtual void Load(const std::string &modelPath) = 0;
 
-    virtual void Execute(const at::Tensor &input) = 0;
+    virtual void Execute(const std::string &imgPath) = 0;
+
 };
+
+#endif /* MODEL_LOADER_H */

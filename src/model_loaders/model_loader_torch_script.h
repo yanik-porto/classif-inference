@@ -1,3 +1,6 @@
+#ifndef MODEL_LOADER_TORCH_SCIPT_H
+#define MODEL_LOADER_TORCH_SCIPT_H
+
 #include "model_loader.h"
 
 class ModelLoaderTorchScript : public ModelLoader{
@@ -12,8 +15,11 @@ public:
      */
     void Load(const std::string &modelPath) override;
 
-    void Execute(const at::Tensor &input) override;
+    void Execute(const std::string &imgPath) override;
 
 private:
-    torch::jit::script::Module *_module;
+    struct Inner;
+    Inner *_inner;
 };
+
+#endif /* MODEL_LOADER_TORCH_SCRIPT_H */

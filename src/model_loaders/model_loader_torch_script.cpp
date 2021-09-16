@@ -1,16 +1,22 @@
 #include "model_loader_torch_script.h"
 
-#include <torch/script.h> // One-stop header.
 #include <chrono>
+#include <torch/script.h>
+
+struct ModelLoaderTorchScript::Inner
+{
+    torch::jit::script::Module *_module;
+};
 
 ModelLoaderTorchScript::ModelLoaderTorchScript() :
-    ModelLoader()
+    ModelLoader(),
+    _inner(new Inner())
 {
 }
 
 ModelLoaderTorchScript::~ModelLoaderTorchScript()
 {
-    delete _module;
+    delete _inner->_module;
 }
 
 void ModelLoaderTorchScript::Load(const std::string &modelPath)
@@ -18,8 +24,8 @@ void ModelLoaderTorchScript::Load(const std::string &modelPath)
     try
     {
         // Deserialize the ScriptModule from a file using torch::jit::load().
-        _module = new torch::jit::script::Module();
-        *_module = torch::jit::load(modelPath);
+       _inner->_module = new torch::jit::script::Module();
+       *_inner->_module = torch::jit::load(modelPath);
     }
     catch (const c10::Error &e)
     {
@@ -28,8 +34,9 @@ void ModelLoaderTorchScript::Load(const std::string &modelPath)
     }
 }
 
-void ModelLoaderTorchScript::Execute(const at::Tensor &input)
+void ModelLoaderTorchScript::Execute(const std::string &/*imgPath*/)
 {
+    at::Tensor input = torch::ones({1, 3, 224, 224});
     // Create a vector of inputs.
     std::vector<torch::jit::IValue> inputs;
     inputs.push_back(input.cuda());
@@ -37,7 +44,7 @@ void ModelLoaderTorchScript::Execute(const at::Tensor &input)
     auto start = std::chrono::system_clock::now();
 
     // Execute the model and turn its output into a tensor.
-    at::Tensor output = _module->forward(inputs).toTensor();
+    at::Tensor output = _inner->_module->forward(inputs).toTensor();
 
     std::cout << "inference time : " << 
         std::chrono::duration_cast<std::chrono::milliseconds>(
