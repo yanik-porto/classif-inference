@@ -22,7 +22,7 @@ struct ModelLoaderTensorRt::Inner {
 ModelLoaderTensorRt::Inner::Inner(){
     engine = TRTUniquePtr<nvinfer1::ICudaEngine>{nullptr};
     context = TRTUniquePtr<nvinfer1::IExecutionContext>{nullptr};
-    batchSize = 8;
+    batchSize = 1;
 }
 
 ModelLoaderTensorRt::ModelLoaderTensorRt() :
@@ -37,7 +37,7 @@ ModelLoaderTensorRt::~ModelLoaderTensorRt()
 
 void ModelLoaderTensorRt::Load(const std::string &modelPath)
 {
-    parseOnnxModel(modelPath, _inner->engine, _inner->context);
+    parseOnnxModel(modelPath);
 }
 
 void ModelLoaderTensorRt::Execute(const std::string &imgPath)
@@ -67,8 +67,13 @@ void ModelLoaderTensorRt::Execute(const std::string &imgPath)
 
     // preprocess input data
     this->PreprocessImage(imgPath, (float *)buffers[0], inputDims[0]);
+
     //inference
+    auto start = std::chrono::system_clock::now();
     _inner->context->enqueue(_inner->batchSize, buffers.data(), 0, nullptr);
+    std::cout << "inference time : " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now() - start).count()
+              << " ms" << std::endl;
+
     // post-process results
     this->PostprocessResults((float *)buffers[1], outputDims[0], _inner->batchSize);
 
@@ -86,7 +91,7 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
         std::cerr << "Input image " << imgPath << " load failed\n";
     }
     cv::cuda::GpuMat gpuFrame;
-    gpuFrame.upload(gpuFrame);
+    gpuFrame.upload(frame);
 
     auto inputWidth = dims.d[2];
     auto inputHeight = dims.d[1];
@@ -100,8 +105,8 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
     // normalize
     cv::cuda::GpuMat fltImg;
     resized.convertTo(fltImg, CV_32FC3, 1.f / 255.f, cv::INTER_NEAREST);
-    cv::cuda::subtract(fltImg, cv::Scalar(0.485f, 0.456f, 0.406f), fltImg, cv::noArray(), -1);
-    cv::cuda::divide(fltImg, cv::Scalar(0.229f, 0.224f, 0.225f), fltImg, 1, -1);
+    cv::cuda::subtract(fltImg, cv::Scalar(0.4085f, 0.4228f, 0.3828f), fltImg, cv::noArray(), -1);
+    cv::cuda::divide(fltImg, cv::Scalar(0.3675f, 0.3731f, 0.3788f), fltImg, 1, -1);
 
     std::vector<cv::cuda::GpuMat> chw;
     for (size_t i = 0; i < channels; ++i)
@@ -113,8 +118,6 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
 
 void ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize)
 {
-    std::vector<std::string> classes;
-
     // copy results form GPU to CPU
     std::vector<float> cpuOutput(getSizeByDim(dims) * batchSize);
     cudaMemcpy(cpuOutput.data(), gpuOutput, cpuOutput.size() * sizeof(float), cudaMemcpyDeviceToHost);
@@ -124,18 +127,18 @@ void ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::D
     auto sum = std::accumulate(cpuOutput.begin(), cpuOutput.end(), 0.0);
     // find top classes predicted by the model
     std::vector<int> indices(getSizeByDim(dims) * batchSize);
-    // generate sequence 0, 1, 2, 3, ..., 999
+    // generate sequence
     std::iota(indices.begin(), indices.end(), 0);
     std::sort(indices.begin(), indices.end(), [&cpuOutput](int i1, int i2) {return cpuOutput[i1] > cpuOutput[i2];});
     // print results
     int i = 0;
     while (cpuOutput[indices[i]] / sum > 0.005)
     {
-        if (classes.size() > indices[i])
+        if (_classes.size() > indices[i])
         {
-            std::cout << "class: " << classes[indices[i]] << " | ";
+            std::cout << "class: " << _classes[indices[i]] << " | ";
         }
-        std::cout << "confidence: " << 100 * cpuOutput[indices[i]] / sum << "% | index:" << indices[i] << "n";
+        std::cout << "confidence: " << 100 * cpuOutput[indices[i]] / sum << "% | index:" << indices[i] << std::endl;
         ++i;
     }
 }
@@ -150,9 +153,7 @@ size_t ModelLoaderTensorRt::getSizeByDim(const nvinfer1::Dims &dims)
     return size;
 }
 
-void ModelLoaderTensorRt::parseOnnxModel(const std::string &modelPath,
-                                         TRTUniquePtr<nvinfer1::ICudaEngine> &engine,
-                                         TRTUniquePtr<nvinfer1::IExecutionContext> &context)
+void ModelLoaderTensorRt::parseOnnxModel(const std::string &modelPath)
 {
     TRTUniquePtr<nvinfer1::IBuilder> builder{nvinfer1::createInferBuilder(gLogger)};
     TRTUniquePtr<nvinfer1::INetworkDefinition> network{builder->createNetwork()};
@@ -175,8 +176,8 @@ void ModelLoaderTensorRt::parseOnnxModel(const std::string &modelPath,
     // we have only one image in batch
     builder->setMaxBatchSize(1);
 
-    engine.reset(builder->buildEngineWithConfig(*network, *config));
-    context.reset(engine->createExecutionContext());
+    _inner->engine.reset(builder->buildEngineWithConfig(*network, *config));
+    _inner->context.reset(_inner->engine->createExecutionContext());
 }
 
 void ModelLoaderTensorRt::Logger::log(Severity severity, const char *msg)

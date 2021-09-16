@@ -10,11 +10,16 @@ public:
 
     /**
      * @brief load a model from a given path
-     * 
+     *
      * @param modelPath path to the model to load
      */
     void Load(const std::string &modelPath) override;
 
+    /**
+     * @brief run inference on an image given its path
+     *
+     * @param imgPath path to the image
+     */
     void Execute(const std::string &imgPath) override;
 
 private:
