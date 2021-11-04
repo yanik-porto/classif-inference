@@ -87,7 +87,7 @@ void ModelLoaderOpenVino::Execute(const std::string &imgPath)
         std::cerr << "Input image " << imgPath << " load failed\n";
     }
 
-    // cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
+    cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
     cv::resize(frame, frame, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
     InferenceEngine::Blob::Ptr input = wrapMat2Blob(frame);
 
