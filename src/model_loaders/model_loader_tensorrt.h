@@ -68,6 +68,7 @@ private:
     using TRTUniquePtr = std::unique_ptr< T, TRTDestroy >;
 
     void parseOnnxModel(const std::string &modelPath);
+    void parseEngineModel(const std::string &modelPath);
 
     size_t getSizeByDim(const nvinfer1::Dims &dims);
 
