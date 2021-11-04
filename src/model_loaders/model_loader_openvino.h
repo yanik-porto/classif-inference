@@ -22,5 +22,9 @@ public:
      * @param imgPath path to the image
      */
     void Execute(const std::string &imgPath);
+
+private:
+    struct Inner;
+    Inner *_inner;
 };
 #endif // MODEL_LADER_OPENVINO_H
