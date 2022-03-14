@@ -59,10 +59,14 @@ void ModelLoaderTensorRt::Execute(const std::string &imgPath)
         cudaMalloc(&buffers[i], bindingSize);
         if (_inner->engine->bindingIsInput(i))
         {
+            auto name = _inner->engine->getBindingName(i);
+            std::cout << "input name : " << name << std::endl;
             inputDims.emplace_back(_inner->engine->getBindingDimensions(i));
         }
         else
         {
+            auto name = _inner->engine->getBindingName(i);
+            std::cout << "output name : " << name << std::endl;
             outputDims.emplace_back(_inner->engine->getBindingDimensions(i));
         }
     }
@@ -125,7 +129,7 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
 
 void ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize)
 {
-    // copy results form GPU to CPU
+    // copy results from GPU to CPU
     std::vector<float> cpuOutput(getSizeByDim(dims) * batchSize);
     cudaMemcpy(cpuOutput.data(), gpuOutput, cpuOutput.size() * sizeof(float), cudaMemcpyDeviceToHost);
 
