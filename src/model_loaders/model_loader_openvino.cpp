@@ -6,15 +6,14 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
+#include <fstream>
 
 struct ModelLoaderOpenVino::Inner
 {
-    InferenceEngine::Core _core;
-    InferenceEngine::CNNNetwork _network;
-    InferenceEngine::ExecutableNetwork _executable_network;
     InferenceEngine::InferRequest _infer_request;
     std::string _input_name;
     std::string _output_name;
+    std::vector<char> weights;
 };
 
 ModelLoaderOpenVino::ModelLoaderOpenVino() :
@@ -28,7 +27,29 @@ ModelLoaderOpenVino::~ModelLoaderOpenVino()
 
 void ModelLoaderOpenVino::Load(const std::string &modelPath)
 {
-    auto network = _inner->_core.ReadNetwork(modelPath);
+    InferenceEngine::Core core;
+
+    auto fileToBuffer = [](const std::string& filePath) {
+        std::ifstream file(filePath, std::ios::binary | std::ios::ate);
+        std::streamsize size = file.tellg();
+        file.seekg(0, std::ios::beg);
+        std::vector<char> buffer(size);
+        if (!file.read(buffer.data(), size)) {
+            return std::vector<char>();
+        }
+        return buffer;
+    };
+
+    // find weight path from model path
+    std::string weightPath = modelPath.substr(0, modelPath.find_last_of(".") + 1) + "bin";
+
+    // read model and weight file
+    std::vector<char> model = fileToBuffer(modelPath);
+    _inner->weights = fileToBuffer(weightPath);
+
+    // read network from buffers
+    std::string strModel(model.begin(), model.end());
+    InferenceEngine::CNNNetwork network = core.ReadNetwork(strModel, InferenceEngine::make_shared_blob<uint8_t>({InferenceEngine::Precision::U8, {_inner->weights.size()}, InferenceEngine::C}, (uint8_t *)_inner->weights.data()));
 
     /** Take information about all topology inputs **/
     InferenceEngine::InputsDataMap input_info = network.getInputsInfo();
@@ -55,8 +76,9 @@ void ModelLoaderOpenVino::Load(const std::string &modelPath)
         output_data->setPrecision(InferenceEngine::Precision::FP32);
     }
 
-    _inner->_executable_network = _inner->_core.LoadNetwork(network, "CPU");
-    _inner->_infer_request = _inner->_executable_network.CreateInferRequest();
+    InferenceEngine::ExecutableNetwork executable_network;
+    executable_network = core.LoadNetwork(network, "CPU");
+    _inner->_infer_request = executable_network.CreateInferRequest();
 }
 
 InferenceEngine::Blob::Ptr wrapMat2Blob(const cv::Mat &mat)
