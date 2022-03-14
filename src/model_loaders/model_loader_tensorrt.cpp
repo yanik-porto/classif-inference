@@ -170,29 +170,29 @@ size_t ModelLoaderTensorRt::getSizeByDim(const nvinfer1::Dims &dims)
 
 void ModelLoaderTensorRt::parseOnnxModel(const std::string &modelPath)
 {
-    // TRTUniquePtr<nvinfer1::IBuilder> builder{nvinfer1::createInferBuilder(gLogger)};
-    // TRTUniquePtr<nvinfer1::INetworkDefinition> network{builder->createNetwork()};
-    // TRTUniquePtr<nvonnxparser::IParser> parser{nvonnxparser::createParser(*network, gLogger)};
-    // // parse ONNX
-    // if (!parser->parseFromFile(modelPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO)))
-    // {
-    //     std::cerr << "ERROR: could not parse the model.\n";
-    //     return;
-    // }
+    TRTUniquePtr<nvinfer1::IBuilder> builder{nvinfer1::createInferBuilder(gLogger)};
+    TRTUniquePtr<nvinfer1::INetworkDefinition> network{builder->createNetwork()};
+    TRTUniquePtr<nvonnxparser::IParser> parser{nvonnxparser::createParser(*network, gLogger)};
+    // parse ONNX
+    if (!parser->parseFromFile(modelPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO)))
+    {
+        std::cerr << "ERROR: could not parse the model.\n";
+        return;
+    }
 
-    // TRTUniquePtr<nvinfer1::IBuilderConfig> config{builder->createBuilderConfig()};
-    // // allow TensorRT to use up to 1GB of GPU memory for tactic selection.
-    // config->setMaxWorkspaceSize(1ULL << 30);
-    // // use FP16 mode if possible
-    // if (builder->platformHasFastFp16())
-    // {
-    //     config->setFlag(nvinfer1::BuilderFlag::kFP16);
-    // }
-    // // we have only one image in batch
-    // builder->setMaxBatchSize(1);
+    TRTUniquePtr<nvinfer1::IBuilderConfig> config{builder->createBuilderConfig()};
+    // allow TensorRT to use up to 1GB of GPU memory for tactic selection.
+    config->setMaxWorkspaceSize(1ULL << 30);
+    // use FP16 mode if possible
+    if (builder->platformHasFastFp16())
+    {
+        config->setFlag(nvinfer1::BuilderFlag::kFP16);
+    }
+    // we have only one image in batch
+    builder->setMaxBatchSize(1);
 
-    // _inner->engine.reset(builder->buildEngineWithConfig(*network, *config));
-    // _inner->context.reset(_inner->engine->createExecutionContext());
+    _inner->engine.reset(builder->buildEngineWithConfig(*network, *config));
+    _inner->context.reset(_inner->engine->createExecutionContext());
 }
 
 void ModelLoaderTensorRt::parseEngineModel(const std::string &modelPath)
