@@ -101,6 +101,8 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
     {
         std::cerr << "Input image " << imgPath << " load failed\n";
     }
+    cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
+
     cv::cuda::GpuMat gpuFrame;
     gpuFrame.upload(frame);
 
@@ -116,8 +118,10 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
     // normalize
     cv::cuda::GpuMat fltImg;
     resized.convertTo(fltImg, CV_32FC3, 1.f / 255.f, cv::INTER_NEAREST);
-    cv::cuda::subtract(fltImg, cv::Scalar(0.4085f, 0.4228f, 0.3828f), fltImg, cv::noArray(), -1);
-    cv::cuda::divide(fltImg, cv::Scalar(0.3675f, 0.3731f, 0.3788f), fltImg, 1, -1);
+    // cv::cuda::subtract(fltImg, cv::Scalar(0.4085f, 0.4228f, 0.3828f), fltImg, cv::noArray(), -1);
+    cv::cuda::subtract(fltImg, cv::Scalar(0.485f, 0.456f, 0.406f), fltImg, cv::noArray(), -1);
+    // cv::cuda::divide(fltImg, cv::Scalar(0.3675f, 0.3731f, 0.3788f), fltImg, 1, -1);
+    cv::cuda::divide(fltImg, cv::Scalar(0.229f, 0.224f, 0.225f), fltImg, 1, -1);
 
     std::vector<cv::cuda::GpuMat> chw;
     for (size_t i = 0; i < channels; ++i)
