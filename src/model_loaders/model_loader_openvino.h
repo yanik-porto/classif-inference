@@ -20,8 +20,9 @@ public:
      * @brief run inference on an image given its path
      *
      * @param imgPath path to the image
+     * @return name of the class found
      */
-    void Execute(const std::string &imgPath);
+    std::string Execute(const std::string &imgPath) override;
 
 private:
     struct Inner;

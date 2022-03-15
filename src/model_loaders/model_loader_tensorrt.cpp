@@ -47,7 +47,7 @@ void ModelLoaderTensorRt::Load(const std::string &modelPath)
     }
 }
 
-void ModelLoaderTensorRt::Execute(const std::string &imgPath)
+std::string ModelLoaderTensorRt::Execute(const std::string &imgPath)
 {
 
     std::vector< nvinfer1::Dims > inputDims; // we expect only one input
@@ -73,7 +73,7 @@ void ModelLoaderTensorRt::Execute(const std::string &imgPath)
     if (inputDims.empty() || outputDims.empty())
     {
         std::cerr << "Expect at least one input and one output for networkn";
-        return;
+        return "unkown";
     }
 
     // preprocess input data
@@ -86,12 +86,14 @@ void ModelLoaderTensorRt::Execute(const std::string &imgPath)
               << " ms" << std::endl;
 
     // post-process results
-    this->PostprocessResults((float *)buffers[1], outputDims[0], _inner->batchSize);
+    std::string classFound = this->PostprocessResults((float *)buffers[1], outputDims[0], _inner->batchSize);
 
     for (void* buf : buffers)
     {
         cudaFree(buf);
     }
+
+    return classFound;
 }
 
 void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpuInput, const nvinfer1::Dims &dims)
@@ -131,7 +133,7 @@ void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *gpu
     cv::cuda::split(fltImg, chw);
 }
 
-void ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize)
+std::string ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize)
 {
     // copy results from GPU to CPU
     std::vector<float> cpuOutput(getSizeByDim(dims) * batchSize);
@@ -156,6 +158,8 @@ void ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::D
         std::cout << "confidence: " << 100 * cpuOutput[indices[i]] / sum << "% | index:" << indices[i] << std::endl;
         ++i;
     }
+
+    return _classes[indices[0]];
 }
 
 size_t ModelLoaderTensorRt::getSizeByDim(const nvinfer1::Dims &dims)

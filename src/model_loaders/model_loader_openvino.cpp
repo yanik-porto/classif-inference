@@ -101,7 +101,7 @@ InferenceEngine::Blob::Ptr wrapMat2Blob(const cv::Mat &mat)
     return InferenceEngine::make_shared_blob<uint8_t>(tDesc, mat.data);
 }
 
-void ModelLoaderOpenVino::Execute(const std::string &imgPath)
+std::string ModelLoaderOpenVino::Execute(const std::string &imgPath)
 {
     cv::Mat frame = cv::imread(imgPath);
     if (frame.empty())
@@ -123,4 +123,6 @@ void ModelLoaderOpenVino::Execute(const std::string &imgPath)
     // Print classification results
     ClassificationResult classificationResult(output, {imgPath}, 1, 5, _classes);
     classificationResult.print();
+
+    return "unknown"; // TODO : get best res
 }

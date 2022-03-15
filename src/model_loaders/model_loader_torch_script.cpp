@@ -34,7 +34,7 @@ void ModelLoaderTorchScript::Load(const std::string &modelPath)
     }
 }
 
-void ModelLoaderTorchScript::Execute(const std::string &/*imgPath*/)
+std::string ModelLoaderTorchScript::Execute(const std::string &/*imgPath*/)
 {
     at::Tensor input = torch::ones({1, 3, 224, 224});
     // Create a vector of inputs.
@@ -52,4 +52,6 @@ void ModelLoaderTorchScript::Execute(const std::string &/*imgPath*/)
         << " ms" << std::endl;
 
     std::cout << output.slice(/*dim=*/1, /*start=*/0, /*end=*/5) << '\n';
+
+    return "unknown";
 }

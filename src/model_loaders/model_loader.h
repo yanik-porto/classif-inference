@@ -27,8 +27,16 @@ public:
      * @brief run inference on an image given its path
      *
      * @param imgPath path to the image
+     * @return name of the class found
      */
-    virtual void Execute(const std::string &imgPath) = 0;
+    virtual std::string Execute(const std::string &imgPath) = 0;
+
+    /**
+     * @brief run inference on several images sorted in class folders
+     * 
+     * @param folderPath Path to the folder containing folder of classes 
+     */
+    void ExecuteOnFolder(const std::string &folderPath);
 
 protected:
     std::vector<std::string> _classes;

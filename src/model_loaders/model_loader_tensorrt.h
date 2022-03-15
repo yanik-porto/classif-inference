@@ -24,8 +24,9 @@ public:
      * @brief run inference on an image given its path
      *
      * @param imgPath path to the image
+     * @return name of the class found
      */
-    void Execute(const std::string &imgPath);
+    std::string Execute(const std::string &imgPath) override;
 
 private:
     /**
@@ -43,8 +44,9 @@ private:
      * @param gpuOutput buffer filled with inference results
      * @param dims output dimensions
      * @param batchSize batch size
+     * @return name of the class found
      */
-    void PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize);
+    std::string PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize);
 
     class Logger : public nvinfer1::ILogger
     {
