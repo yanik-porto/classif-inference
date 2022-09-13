@@ -1,5 +1,4 @@
 #include "model_loader_tensorrt.h"
-#include "definitionstrt.h"
 
 #include <chrono>
 #include <iostream>
