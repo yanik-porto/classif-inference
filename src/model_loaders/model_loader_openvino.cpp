@@ -1,5 +1,4 @@
 #include "model_loader_openvino.h"
-#include "classification_results.h"
 
 #include <inference_engine.hpp>
 #include <openvino/openvino.hpp>
