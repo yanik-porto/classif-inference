@@ -28,6 +28,13 @@ public:
      */
     std::string Execute(const std::string &imgPath) override;
 
+    /**
+     * @brief run inference on a batch of images given their paths
+     * @param imgPaths paths to the images
+     * @return names of the classes found
+     */
+    std::vector<std::string> Execute(const std::vector<std::string> &imgPaths) override;
+
 private:
     /**
      * @brief read and preprocess an image
@@ -36,7 +43,7 @@ private:
      * @param gpuInput buffer initialized with number of binding indices
      * @param dims input dimensions
      */
-    void PreprocessImage(const std::string &imgPath, float *gpuInput, const nvinfer1::Dims &dims);
+    void PreprocessImage(const std::vector<std::string> &imgPath, float *gpuInput, const nvinfer1::Dims &dims);
 
     /**
      * @brief post process the inference results

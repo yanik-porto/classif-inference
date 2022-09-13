@@ -32,11 +32,19 @@ public:
     virtual std::string Execute(const std::string &imgPath) = 0;
 
     /**
+     * @brief run inference on a batch of images given their paths
+     * @param imgPaths paths to the images
+     * @return names of the classes found
+     */
+    virtual std::vector<std::string> Execute(const std::vector<std::string> &imgPaths) = 0;
+
+    /**
      * @brief run inference on several images sorted in class folders
      * 
-     * @param folderPath Path to the folder containing folder of classes 
+     * @param folderPath Path to the folder containing folder of classes
+     * @param nImgsPerBatch Number of images per batch
      */
-    void ExecuteOnFolder(const std::string &folderPath);
+    void ExecuteOnFolder(const std::string &folderPath, const int nImgsPerBatch);
 
 protected:
     std::vector<std::string> _classes;

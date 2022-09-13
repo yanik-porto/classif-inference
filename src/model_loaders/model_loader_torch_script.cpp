@@ -55,3 +55,8 @@ std::string ModelLoaderTorchScript::Execute(const std::string &/*imgPath*/)
 
     return "unknown";
 }
+
+std::vector<std::string> ModelLoaderTorchScript::Execute(const std::vector<std::string> &/*imgPaths*/)
+{
+    return std::vector<std::string>();
+}

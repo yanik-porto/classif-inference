@@ -25,7 +25,7 @@ void ModelLoader::LoadClasses(const std::string &classesPath)
     std::cout << _classes.size() << " classes loaded" << std::endl;
 }
 
-void ModelLoader::ExecuteOnFolder(const std::string &folderPath)
+void ModelLoader::ExecuteOnFolder(const std::string &folderPath, const int nImgsPerBatch)
 {
     boost::filesystem::path dataFolderPath = boost::filesystem::path(folderPath);
     std::cout << dataFolderPath << std::endl;
@@ -39,6 +39,8 @@ void ModelLoader::ExecuteOnFolder(const std::string &folderPath)
     {
         if (boost::filesystem::is_directory(itr->status()))
         {
+            std::vector<std::string> currentBatch;
+
             // Get folder name
             std::string className = itr->path().filename().c_str();
             std::cout << className << std::endl;
@@ -49,11 +51,23 @@ void ModelLoader::ExecuteOnFolder(const std::string &folderPath)
             {
                 if (itrClass->path().extension() == ".jpg" || itrClass->path().extension() == ".png")
                 {
-                    std::string classFound = this->Execute(itrClass->path().c_str());
-                    if (classFound == className) {
-                        nCorrects++;
+                    currentBatch.push_back(itrClass->path().c_str());
+                    if (currentBatch.size() < nImgsPerBatch) {
+                        continue;
                     }
-                    nImages++;
+
+                    std::vector<std::string> classesFound = this->Execute(currentBatch);
+                    for (auto &classFound : classesFound) {
+                        if (classFound == className) {
+                            nCorrects++;
+                        }
+                        else {
+                            std::cout << "failed on : " << itrClass->path().c_str() << std::endl;
+                        }
+                    }
+                    nImages += classesFound.size();
+
+                    currentBatch.clear();
                 }
             }
 

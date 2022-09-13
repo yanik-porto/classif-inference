@@ -125,4 +125,14 @@ std::string ModelLoaderOpenVino::Execute(const std::string &imgPath)
     classificationResult.print();
 
     return "unknown"; // TODO : get best res
+std::vector<std::string> ModelLoaderOpenVino::Execute(const std::vector<std::string> &imgPaths)
+{
+    // TODO : Multi image per batch
+    std::vector<std::string> results;
+
+    for (auto &img : imgPaths) {
+        std::string res = Execute(img);
+        results.push_back(res);
+    }
+    return results;
 }

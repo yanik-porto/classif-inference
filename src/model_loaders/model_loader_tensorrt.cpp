@@ -10,9 +10,9 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
-#include <opencv2/cudawarping.hpp>
-#include <opencv2/cudaarithm.hpp>
 #include <cuda_runtime.h>
+
+using namespace std::chrono;
 
 uint32_t GetTensorRTVersion()
 {
@@ -149,8 +149,6 @@ void ModelLoaderTensorRt::Load(const std::string &modelPath)
         parseEngineModel(modelPath);
     }
 
-    // std::vector<nvinfer1::Dims> inputDims;                        // we expect only one input
-    // std::vector<nvinfer1::Dims> outputDims;                       // and one output
     std::vector<void *> buffers(_inner->engine->getNbBindings()); // buffers for input and ouput data
     for (size_t i = 0; i < _inner->engine->getNbBindings(); ++i)
     {
@@ -160,7 +158,6 @@ void ModelLoaderTensorRt::Load(const std::string &modelPath)
         {
             auto name = _inner->engine->getBindingName(i);
             std::cout << "input name : " << name << std::endl;
-            // inputDims.emplace_back(_inner->engine->getBindingDimensions(i));
             _inner->m_inputDims = _inner->engine->getBindingDimensions(i);
             _inner->m_inputBindingIndex = i;
         }
@@ -169,7 +166,6 @@ void ModelLoaderTensorRt::Load(const std::string &modelPath)
             auto name = _inner->engine->getBindingName(i);
             std::cout << "output name : " << name << std::endl;
             _inner->m_outputDims = _inner->engine->getBindingDimensions(i);
-            // outputDims.emplace_back(_inner->engine->getBindingDimensions(i));
             _inner->m_outputBindingIndex = i;
         }
     }
@@ -202,43 +198,51 @@ void ModelLoaderTensorRt::Load(const std::string &modelPath)
     cudaMalloc(&_inner->m_pOutputDataDevice, _inner->m_numOutput * sizeof(float));          // Allocation mémoire du buffer de sortie
 }
 
-void ModelLoaderTensorRt::PreprocessImage(const std::string &imgPath, float *tensor, const nvinfer1::Dims &dims)
+void ModelLoaderTensorRt::PreprocessImage(const std::vector<std::string> &imgPaths, float *tensor, const nvinfer1::Dims &dims)
 {
-    auto frame = cv::imread(imgPath);
-    cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
-
     if (dims.nbDims < 3)
     {
-        std::cout << "load model error input: dims.nbDims < 3 : dims.nbDims = " << dims.nbDims << std::endl;
+        std::cerr << "load model error input: dims.nbDims < 3 : dims.nbDims = " << dims.nbDims << std::endl;
         return;
     }
+    const int inputN = dims.d[dims.nbDims - 4]; // Nombre d'images dans le batch
     const int inputH = dims.d[dims.nbDims - 2]; // Hauteur de l'image
     const int inputW = dims.d[dims.nbDims - 1]; // Largeur de l'image
     const int inputC = dims.d[dims.nbDims - 3]; // Nb cannaux de l'image
 
-    // Resize image
-    cv::Mat imgResized;
-
-    cv::resize(frame, imgResized, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
-    std::vector<cv::Mat> img_vector;
-    cv::split(imgResized, img_vector);
+    if (inputN != imgPaths.size()) {
+        std::cerr << "Error: number of input images does not match the batch size : " << inputN << " vs " << imgPaths.size() << std::endl;
+        return;
+    }
 
     std::vector<float> mean{0.485f, 0.456f, 0.406f};
     std::vector<float> std{0.229f, 0.224f, 0.225f};
-    // Chargement de l'image dans un buffer
-    // Passage NWHC -> NCHW
-    for (int n = 0; n < inputC; n++)
-    {
-        for (int i = 0; i < inputW * inputH; i++)
+    for (size_t iImg = 0; iImg < imgPaths.size(); iImg++) {
+        auto frame = cv::imread(imgPaths[iImg]);
+        cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
+
+        // Resize image
+        cv::Mat imgResized;
+
+        cv::resize(frame, imgResized, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
+        std::vector<cv::Mat> img_vector;
+        cv::split(imgResized, img_vector);
+
+        // Chargement de l'image dans un buffer
+        // Passage NWHC -> NCHW
+        for (int n = 0; n < inputC; n++)
         {
-            tensor[i + n * inputW * inputH] = ((img_vector.at(n).at<uchar>(i) / 255.f) - mean.at(n)) / std.at(n);
+            for (int i = 0; i < inputW * inputH; i++)
+            {
+                tensor[(iImg * inputC * inputW * inputH) + i + n * inputW * inputH] = ((img_vector.at(n).at<uchar>(i) / 255.f) - mean.at(n)) / std.at(n);
+            }
         }
     }
 }
 
 std::string ModelLoaderTensorRt::Execute(const std::string &imgPath)
 {
-    PreprocessImage(imgPath, _inner->m_pInputDataHost, _inner->m_inputDims);
+    PreprocessImage(std::vector<std::string>{imgPath}, _inner->m_pInputDataHost, _inner->m_inputDims);
 
     void *bindings[2];
     /* transfer to device */
@@ -253,7 +257,7 @@ std::string ModelLoaderTensorRt::Execute(const std::string &imgPath)
     cudaMemcpy(_inner->m_pOutputDataHost, _inner->m_pOutputDataDevice, _inner->m_numOutput * sizeof(float), cudaMemcpyDeviceToHost);
 
     float *tensor = _inner->m_pOutputDataHost;
-    std::vector<std::vector<std::pair<size_t, float>>> global_result;
+
     // Recherche de l'indice correspondant à la classe prédicte : Recherche de la valeur de sortie maximale
     size_t numel = getSizeByDim(_inner->m_outputDims);
     std::vector<size_t> indices(numel);
@@ -266,6 +270,58 @@ std::string ModelLoaderTensorRt::Execute(const std::string &imgPath)
 
     std::cout << "class " << indices[0] << " with score " << tensor[indices[0]] << std::endl;
     return _classes[indices[0]];
+}
+
+std::vector<std::string> ModelLoaderTensorRt::Execute(const std::vector<std::string> &imgPaths)
+{
+    std::vector<std::string> out(imgPaths.size(), "unknown");
+
+    PreprocessImage(imgPaths, _inner->m_pInputDataHost, _inner->m_inputDims);
+
+    auto start = high_resolution_clock::now();
+
+    void *bindings[2];
+    /* transfer to device */
+    cudaMemcpy(_inner->m_pInputDataDevice, _inner->m_pInputDataHost, _inner->m_numInput * sizeof(float), cudaMemcpyHostToDevice);
+    bindings[_inner->m_inputBindingIndex] = (void *)_inner->m_pInputDataDevice;
+    bindings[_inner->m_outputBindingIndex] = (void *)_inner->m_pOutputDataDevice;
+    /* execute engine */
+    if (!_inner->context->execute(_inner->batchSize, bindings))
+    {
+        return out;
+    }
+    cudaMemcpy(_inner->m_pOutputDataHost, _inner->m_pOutputDataDevice, _inner->m_numOutput * sizeof(float), cudaMemcpyDeviceToHost);
+
+    auto stop = high_resolution_clock::now();
+    auto duration = duration_cast<microseconds>(stop - start);
+    std::cout << "inference time : " << duration.count() / 1000. << " ms" << std::endl;
+
+    float *tensor = _inner->m_pOutputDataHost;
+
+    // Recherche de l'indice correspondant à la classe prédicte : Recherche de la valeur de sortie maximale
+    int nImgPerBatch = _inner->m_outputDims.d[0];
+    int nResPerImg = _inner->m_outputDims.d[1];
+
+    for (size_t iB = 0; iB < nImgPerBatch; iB++) {
+        if (iB >= imgPaths.size()) {
+            break;
+        }
+
+        std::vector<size_t> indices(nResPerImg);
+        std::vector<float> resForImg(nResPerImg);
+        for (size_t i = 0; i < static_cast<int>(nResPerImg); i++)
+        {
+            indices[i] = i;
+            resForImg[i] = tensor[i + iB * nResPerImg];
+        }
+        sort(indices.begin(), indices.begin() + nResPerImg, [resForImg](size_t idx1, size_t idx2)
+            { return resForImg[idx1] > resForImg[idx2]; });
+
+        std::cout << "class " << indices[0] << " with score " << resForImg[indices[0]] << std::endl;
+        out[iB] = _classes[indices[0]];
+    }
+
+    return out;
 }
 
 std::string ModelLoaderTensorRt::PostprocessResults(float *gpuOutput, const nvinfer1::Dims &dims, int batchSize)

@@ -23,6 +23,13 @@ public:
      */
     std::string Execute(const std::string &imgPath) override;
 
+    /**
+     * @brief run inference on a batch of images given their paths
+     * @param imgPaths paths to the images
+     * @return names of the classes found
+     */
+    std::vector<std::string> Execute(const std::vector<std::string> &imgPaths) override;
+
 private:
     struct Inner;
     Inner *_inner;
