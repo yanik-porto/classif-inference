@@ -2,18 +2,17 @@
 #include "classification_results.h"
 
 #include <inference_engine.hpp>
+#include <openvino/openvino.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <fstream>
+#include <iterator>
 
 struct ModelLoaderOpenVino::Inner
 {
-    InferenceEngine::InferRequest _infer_request;
-    std::string _input_name;
-    std::string _output_name;
-    std::vector<char> weights;
+    ov::InferRequest _infer_request;
 };
 
 ModelLoaderOpenVino::ModelLoaderOpenVino() :
@@ -27,8 +26,6 @@ ModelLoaderOpenVino::~ModelLoaderOpenVino()
 
 void ModelLoaderOpenVino::Load(const std::string &modelPath)
 {
-    InferenceEngine::Core core;
-
     auto fileToBuffer = [](const std::string& filePath) {
         std::ifstream file(filePath, std::ios::binary | std::ios::ate);
         std::streamsize size = file.tellg();
@@ -44,41 +41,44 @@ void ModelLoaderOpenVino::Load(const std::string &modelPath)
     std::string weightPath = modelPath.substr(0, modelPath.find_last_of(".") + 1) + "bin";
 
     // read model and weight file
-    std::vector<char> model = fileToBuffer(modelPath);
-    _inner->weights = fileToBuffer(weightPath);
+    std::vector<char> modelBuffer = fileToBuffer(modelPath);
+    std::vector<char> weights = fileToBuffer(weightPath);
 
     // read network from buffers
-    std::string strModel(model.begin(), model.end());
-    InferenceEngine::CNNNetwork network = core.ReadNetwork(strModel, InferenceEngine::make_shared_blob<uint8_t>({InferenceEngine::Precision::U8, {_inner->weights.size()}, InferenceEngine::C}, (uint8_t *)_inner->weights.data()));
+    std::string strModel(modelBuffer.begin(), modelBuffer.end());
 
-    /** Take information about all topology inputs **/
-    InferenceEngine::InputsDataMap input_info = network.getInputsInfo();
-    _inner->_input_name = input_info.begin()->first;
-
-    /** Iterate over all input info**/
-    for (auto &item : input_info)
-    {
-        auto input_data = item.second;
-        // Add your input configuration steps here
-        // input_data->getPreProcess().setResizeAlgorithm(InferenceEngine::RESIZE_BILINEAR);
-        input_data->setPrecision(InferenceEngine::Precision::U8);
-        input_data->getPreProcess().setColorFormat(InferenceEngine::ColorFormat::RGB);
+    // fill weights tensor
+    ov::Tensor tensor (ov::element::Type_t::u8, ov::Shape({weights.size()}));
+    auto tensorData = tensor.data<uint8_t>();
+    for (size_t i = 0; i < tensor.get_size(); ++i) {
+        tensorData[i] = weights[i];
     }
 
-    /** Take information about all topology outputs **/
-    InferenceEngine::OutputsDataMap output_info = network.getOutputsInfo();
-    _inner->_output_name = output_info.begin()->first;
-    /** Iterate over all output info**/
-    for (auto &item : output_info)
-    {
-        auto output_data = item.second;
-        // Add your output configuration steps here
-        output_data->setPrecision(InferenceEngine::Precision::FP32);
-    }
+    // read model
+    ov::Core core;
+    std::shared_ptr<ov::Model> model = core.read_model(strModel, tensor);
 
-    InferenceEngine::ExecutableNetwork executable_network;
-    executable_network = core.LoadNetwork(network, "CPU");
-    _inner->_infer_request = executable_network.CreateInferRequest();
+    // preprocessing info
+    ov::preprocess::PrePostProcessor ppp(model);
+    ov::preprocess::InputInfo &input = ppp.input(0);
+    // layout and precision conversion is inserted automatically,
+    // because tensor format != model input format
+    input.tensor().set_layout("NHWC").set_element_type(ov::element::u8);
+    input.model().set_layout("NCHW");
+
+    // create infer request
+    model = ppp.build();
+    ov::CompiledModel compiledModel = core.compile_model(model, "CPU");
+    _inner->_infer_request = compiledModel.create_infer_request();
+
+    // Display input info
+    ov::Tensor inputTensor = _inner->_infer_request.get_input_tensor(0);
+    std::cout << "type : " << inputTensor.get_element_type().c_type_string() << std::endl;
+    std::cout << "shape : ";
+    for (auto &s : inputTensor.get_shape()) {
+        std::cout << s << " ";
+    }
+    std::cout << std::endl;
 }
 
 InferenceEngine::Blob::Ptr wrapMat2Blob(const cv::Mat &mat)
@@ -103,28 +103,44 @@ InferenceEngine::Blob::Ptr wrapMat2Blob(const cv::Mat &mat)
 
 std::string ModelLoaderOpenVino::Execute(const std::string &imgPath)
 {
+    // read image file
     cv::Mat frame = cv::imread(imgPath);
-    if (frame.empty())
-    {
+    if (frame.empty()) {
         std::cerr << "Input image " << imgPath << " load failed\n";
     }
-
-    cv::cvtColor(frame, frame, cv::COLOR_BGR2RGB);
     cv::resize(frame, frame, cv::Size(224, 224), 0, 0, cv::INTER_LINEAR);
-    InferenceEngine::Blob::Ptr input = wrapMat2Blob(frame);
 
-    _inner->_infer_request.SetBlob(_inner->_input_name, input);
+    // Fill input
+    ov::Tensor inputTensor = _inner->_infer_request.get_input_tensor(0);
+    auto inputData = inputTensor.data<uint8_t>();
+    for (size_t i = 0; i < inputTensor.get_size(); ++i) {
+        inputData[i] = *(frame.data + i);
+    }
+
     std::cout << "Execution de l'inference ... " << std::endl;
-    _inner->_infer_request.Infer();
+    _inner->_infer_request.infer();
     std::cout << "... OK !" << std::endl;
 
-    InferenceEngine::Blob::Ptr output = _inner->_infer_request.GetBlob(_inner->_output_name);
+    // Collect output
+    ov::Tensor outputTensor = _inner->_infer_request.get_output_tensor();
+    auto outData = outputTensor.data<float>();
 
-    // Print classification results
-    ClassificationResult classificationResult(output, {imgPath}, 1, 5, _classes);
-    classificationResult.print();
+    // Display output
+    for (size_t i = 0; i < outputTensor.get_size(); ++i) {
+        std::cout << outData[i] << " ";
+    }
+    std::cout << std::endl;
 
-    return "unknown"; // TODO : get best res
+    // Get best class
+    int idx = std::distance(outData, std::max_element(outData, outData + outputTensor.get_size()));
+    std::cout << "index : " << idx << std::endl;
+    if (idx < _classes.size()) {
+        return _classes[idx];
+    }
+
+    return "unknown";
+}
+
 std::vector<std::string> ModelLoaderOpenVino::Execute(const std::vector<std::string> &imgPaths)
 {
     // TODO : Multi image per batch
