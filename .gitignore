@@ -1,5 +1,5 @@
 externals
-build
+build*
 *.pth
 *.pt
 .vscode
